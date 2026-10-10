@@ -1,0 +1,8 @@
+name: speech-enhancement
+channels: [conda-forge]
+dependencies:
+  - python=3.12
+  - pip
+  - portaudio        # needed by sounddevice on Linux (macOS/Windows wheels bundle it)
+  - pip:
+      - -r requirements.txt

@@ -1,0 +1,46 @@
+data:
+  clip_prob: 0.1
+  conditions:
+    clean: 0.1
+    noise: 0.3
+    noise_reverb: 0.4
+    reverb: 0.2
+  segment_s: 4.0
+  snr_range:
+  - -5
+  - 20
+exp: E_dacrn_film
+loss:
+  w_aux: 0.5
+  w_sisdr: 0.1
+  w_stft: 1.0
+model:
+  channels:
+  - 16
+  - 32
+  - 48
+  - 64
+  - 64
+  cond_mode: film
+  hidden: 256
+  name: dacrn
+paths:
+  noise_csv: data/metadata/noises.csv
+  rir_csv: data/metadata/rirs.csv
+  runs: runs
+  speech_csv: data/metadata/speech.csv
+  test_csv: data/metadata/test.csv
+  val_csv: data/metadata/val.csv
+seed: 42
+train:
+  batch_size: 16
+  device: auto
+  early_stop_patience: 3
+  grad_clip: 5.0
+  lr: 0.001
+  lr_factor: 0.5
+  lr_patience: 1
+  max_epochs: 6
+  num_workers: 4
+  steps_per_epoch: 500
+  weight_decay: 0.0

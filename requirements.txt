@@ -1,0 +1,24 @@
+# Tested with Python 3.12 on macOS (Apple M2). Versions pinned to what produced the reported results.
+torch==2.14.1
+numpy==2.5.3
+scipy==1.18.1
+soundfile==0.14.0
+pandas==3.0.6
+PyYAML==6.0.3
+matplotlib==3.11.2
+tqdm==4.70.1
+tabulate==0.10.0
+# evaluation
+pesq==0.0.4
+pystoi==0.4.1
+jiwer==4.0.0
+onnxruntime==1.30.0
+transformers==5.18.0
+huggingface_hub==1.33.0
+# classical baseline
+nara-wpe==0.0.11
+# app / real time
+streamlit==1.65.0
+sounddevice==0.5.6
+# tests
+pytest==9.1.1

@@ -1,0 +1,56 @@
+# Shared settings; each experiment below overrides only what differs.
+seed: 42
+paths:
+  speech_csv: data/metadata/speech.csv
+  noise_csv: data/metadata/noises.csv
+  rir_csv: data/metadata/rirs.csv
+  val_csv: data/metadata/val.csv
+  test_csv: data/metadata/test.csv
+  runs: runs
+
+data:
+  segment_s: 4.0
+  snr_range: [-5, 20]          # dB, w.r.t. reverberant speech
+  clip_prob: 0.1               # recording-chain overload augmentation
+  conditions: {clean: 0.1, noise: 0.3, reverb: 0.2, noise_reverb: 0.4}
+
+model:
+  name: dacrn                  # dacrn | nsnet2
+  cond_mode: film              # none | multitask | film | oracle
+  channels: [16, 32, 48, 64, 64]
+  hidden: 256
+
+loss:
+  w_sisdr: 0.1                 # weight of -SI-SDR (dB)
+  w_stft: 1.0                  # multi-resolution STFT loss
+  w_aux: 0.5                   # degradation-estimation loss (ignored without estimator)
+
+train:
+  device: auto                 # auto -> cuda > mps > cpu
+  batch_size: 16
+  steps_per_epoch: 500
+  max_epochs: 6
+  lr: 1.0e-3
+  weight_decay: 0.0
+  grad_clip: 5.0
+  lr_patience: 1               # ReduceLROnPlateau on validation loss
+  lr_factor: 0.5
+  early_stop_patience: 3
+  num_workers: 4
+
+# Experiment grid (docs/experiments.md). Train with: python scripts/train.py --exp <name>
+experiments:
+  E_dacrn_film:        {model: {cond_mode: film}}
+  D_crn_joint:         {model: {cond_mode: none}}
+  A_nsnet2:            {model: {name: nsnet2}}
+  E2_dacrn_multitask:  {model: {cond_mode: multitask}}
+  E3_dacrn_oracle:     {model: {cond_mode: oracle}}
+  D2_crn_joint_sisdr_only: {model: {cond_mode: none}, loss: {w_stft: 0.0}}
+  B_crn_noise_only:    {model: {cond_mode: none}, data: {conditions: {clean: 0.2, noise: 0.8}}}
+  C_crn_reverb_only:   {model: {cond_mode: none}, data: {conditions: {clean: 0.2, reverb: 0.8}}}
+  E4_dacrn_film_clean_rerun: {model: {cond_mode: film}}   # identical to E; E was disturbed by GPU-watchdog errors + restarts
+
+# CPU / no-GPU demo configuration: python scripts/train.py --exp E_dacrn_film --demo
+demo:
+  train: {batch_size: 4, steps_per_epoch: 50, max_epochs: 2, num_workers: 2}
+  paths: {runs: runs_demo}

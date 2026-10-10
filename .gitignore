@@ -1,0 +1,12 @@
+.venv/
+__pycache__/
+data/raw/
+data/processed/
+results/enhanced/
+runs/*/last.pt
+logs/
+.DS_Store
+.pytest_cache/
+data/*.log
+runs_demo/
+report/Video_Script.*
