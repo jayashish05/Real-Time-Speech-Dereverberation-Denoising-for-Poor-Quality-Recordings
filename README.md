@@ -28,7 +28,7 @@ streamlit run app/app.py
 ## What is in this repository
 
 * **Included:** all source code, configuration, tests, the trained checkpoints of all nine models (`runs/*/best.pt`, 5 to 11 MB each), training logs, every result table and figure, the per-utterance results, and the project report (`report/Project_Report.pdf`).
-* **Not included:** the datasets (about 5 GB) and the generated test audio. The app, file upload and live microphone mode work straight after installation because the checkpoints are included. To use the "Example from the test set" option or to re-run training and evaluation, download and prepare the data first (Section 2).
+* **Not included:** the datasets (about 5 GB) and most of the generated test audio (3 example utterances per test condition are included). The app, file upload and live microphone mode work straight after installation because the checkpoints are included. To browse all 100 test utterances per condition or to re-run training and evaluation, download and prepare the data first (Section 2).
 
 ## 1. Installation
 
@@ -98,6 +98,10 @@ print(analyse(est))                        # {'snr_db':…, 't60_s':…, 'c50_db
 * **Live enhancement:** (1) a true real‑time loop with the local microphone and speakers (16 ms blocks inside the audio callback), with live compute time, RTF, end‑to‑end latency, late‑block counter, live degradation estimate and A/B bypass; (2) browser recording processed by the same frame‑by‑frame streaming engine.
 * **Analysis:** degradation trace and metrics for the last input, plus the test‑set result tables and figures.
 * **Model information:** architecture, parameters, training data, loss, measured inference cost, training curves.
+
+### Hosting on Streamlit Community Cloud
+
+Deploy the repository with **main file path `app/app.py`**. The hosted build uses `app/requirements.txt` (CPU-only PyTorch, no PESQ, which has no Linux wheel) and `packages.txt` (PortAudio); both are picked up automatically. Online, file upload, the bundled test examples (3 per condition), all analysis pages and browser recording work. The real-time microphone loop needs the app to run on your own computer, because a server has no microphone. Speech recognition (ASR/WER) is an opt-in toggle there to stay within the memory limit.
 
 ## 6. Hardware requirements
 

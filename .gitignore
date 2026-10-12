@@ -1,7 +1,10 @@
 .venv/
 __pycache__/
 data/raw/
-data/processed/
+# generated audio is not tracked, except 3 example utterances per test condition for the hosted demo
+data/processed/val/
+data/processed/test/*/*
+!data/processed/test/*/000[0-2]_*.wav
 results/enhanced/
 runs/*/last.pt
 logs/

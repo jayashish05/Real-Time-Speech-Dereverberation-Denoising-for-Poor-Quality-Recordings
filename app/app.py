@@ -10,6 +10,7 @@ import time
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, ROOT)
 os.chdir(ROOT)
+os.environ.setdefault("DNSMOS_THREADS", "2")
 
 import matplotlib  # noqa: E402
 
@@ -164,7 +165,7 @@ Use the sidebar to enhance a file, run live microphone enhancement, inspect the 
 def page_file():
     st.header("File enhancement")
     src = st.radio("Input", ["Upload a recording", "Example from the test set (has a clean reference)"], horizontal=True)
-    x = ref = text = None
+    x = ref = text = key = None
     if src.startswith("Upload"):
         f = st.file_uploader("WAV / MP3 / FLAC / OGG (any sample rate; converted to 16 kHz mono)",
                              type=["wav", "mp3", "flac", "ogg"])
@@ -173,40 +174,48 @@ def page_file():
         if f is not None:
             try:
                 x = load_audio(f)
+                ref = load_audio(r) if r is not None else None
             except Exception as e:
                 st.error(f"Could not decode the file: {e}")
                 return
-            if r is not None:
-                ref = load_audio(r)
+            key = ("upload", f.name, f.size, r.name if r is not None else None)
     else:
         test = pd.read_csv("data/metadata/test.csv")
-        c1, c2 = st.columns(2)
-        s = c1.selectbox("Condition", list(test.set.unique()), index=3)
-        sub = test[test.set == s].reset_index(drop=True)
-        i = c2.slider("Utterance", 0, len(sub) - 1, 0)
-        row = sub.iloc[i]
-        st.caption(f"Simulated: SNR {row.snr_db:.1f} dB · T60 {row.t60_s:.2f} s · C50 {row.c50_db:.1f} dB · "
-                   f"speaker {row.speaker} (test speakers were never seen in training)")
-        if not os.path.exists(row.noisy):
+        test = test[test.noisy.map(os.path.exists)]  # a clone ships 3 examples per condition; the full set needs prepare_data
+        if test.empty:
             st.warning("Test-set audio is not on this machine. Create it with "
                        "`python scripts/download_data.py` and `python scripts/prepare_data.py`, or upload a file.")
             return
+        c1, c2 = st.columns(2)
+        sets = list(test.set.unique())
+        s = c1.selectbox("Condition", sets, index=sets.index("noise_reverb") if "noise_reverb" in sets else 0)
+        sub = test[test.set == s].reset_index(drop=True)
+        i = c2.slider("Utterance", 0, len(sub) - 1, 0) if len(sub) > 1 else 0
+        row = sub.iloc[i]
+        st.caption(f"Simulated: SNR {row.snr_db:.1f} dB · T60 {row.t60_s:.2f} s · C50 {row.c50_db:.1f} dB · "
+                   f"speaker {row.speaker} (test speakers were never seen in training)")
         x = sf.read(row.noisy, dtype="float32")[0]
         ref = sf.read(row.target, dtype="float32")[0]
-        text = row.text
+        text, key = row.text, ("example", row.id)
     if x is None:
         return
     if len(x) > 16000 * 120:
         st.warning("Long file: only the first 120 s are processed.")
         x = x[: 16000 * 120]
     system = st.selectbox("Enhancement system", model_options(), format_func=label)
-    if not st.button("Enhance", type="primary") and st.session_state.get("file_key") != (id(x), system, len(x)):
+    key = (*key, system)
+    if st.button("Enhance", type="primary"):
+        with st.spinner("Enhancing…"):
+            y, est, dt = process(system, x)
+        st.session_state["last"] = {"key": key, "x": x, "y": y, "ref": ref, "text": text, "system": system,
+                                    "analysis": analyse(est), "dt": dt}
+    last = st.session_state.get("last")
+    if not last or last.get("key") != key:  # nothing enhanced yet for this input + system
         return
-    with st.spinner("Enhancing…"):
-        y, est, dt = process(system, x)
-    st.session_state["file_key"] = (id(x), system, len(x))
-    a = analyse(est)
-    st.session_state["last"] = {"x": x, "y": y, "ref": ref, "text": text, "system": system, "analysis": a, "dt": dt}
+    if last["text"] != text:  # transcript typed after enhancing
+        last["text"] = text
+        last.pop("metrics", None)
+    x, y, ref, dt = last["x"], last["y"], last["ref"], last["dt"]
 
     c1, c2 = st.columns(2)
     c1.subheader("Original")
@@ -220,37 +229,52 @@ def page_file():
     t1.pyplot(fig_wave(sig))
     t2.pyplot(fig_spec(sig))
     st.subheader("Degradation analysis")
-    degradation_panel(a)
+    degradation_panel(last["analysis"])
     st.subheader("Metrics")
-    show_metrics(x, y, ref, text)
+    show_metrics(last)
 
 
 LABELS = {"pesq": "PESQ-WB", "stoi": "STOI", "si_sdr": "SI-SDR (dB)", "snr": "SNR (dB)", "dnsmos_sig": "DNSMOS SIG",
           "dnsmos_bak": "DNSMOS BAK", "dnsmos_ovrl": "DNSMOS OVRL", "wer": "WER (%)"}
+ASR_DEFAULT = os.path.isdir("data/raw")  # on where the datasets are (a dev machine); off on a hosted clone
 
 
-def show_metrics(x, y, ref, text):
-    with st.spinner("Computing metrics (DNSMOS, ASR, PESQ, STOI)…"):
-        cols, hyps = {}, {}
-        for name, s in [("Original", x), ("Enhanced", y)]:
-            r = M.dnsmos(s)
-            if ref is not None:
-                r.update({k: v for k, v in M.intrusive(ref, s).items()})
-            hyps[name] = M.transcribe(s)
-            if text:
-                e, n = M.wer_counts(text, hyps[name])
-                r["wer"] = 100 * e / max(n, 1)
-            cols[name] = r
-    df = pd.DataFrame(cols)
+def show_metrics(last, where="file"):
+    """Metrics for the last enhanced input; cached in `last` so page reruns do not recompute them."""
+    x, y, ref, text = last["x"], last["y"], last["ref"], last["text"]
+    asr = st.toggle("Speech recognition (ASR transcript and WER)", value=ASR_DEFAULT, key=f"asr_{where}",
+                    help="Loads wav2vec2-base-960h (a 360 MB model). Leave off on free hosting with little memory.")
+    m = last.get("metrics")
+    if m is None or (asr and not m["hyps"]):
+        with st.spinner("Computing metrics…"):
+            cols, hyps = {}, {}
+            for name, s in [("Original", x), ("Enhanced", y)]:
+                r = M.dnsmos(s)
+                if ref is not None:
+                    r.update(M.intrusive(ref, s))
+                if asr:
+                    hyps[name] = M.transcribe(s)
+                    if text:
+                        e, n = M.wer_counts(text, hyps[name])
+                        r["wer"] = 100 * e / max(n, 1)
+                cols[name] = r
+        m = last["metrics"] = {"cols": cols, "hyps": hyps}
+    df = pd.DataFrame(m["cols"])
     df["Change"] = df["Enhanced"] - df["Original"]
+    no_pesq = ref is not None and df.loc["pesq"].isna().all()
+    df = df.dropna(how="all")
+    if not asr and "wer" in df.index:
+        df = df.drop(index="wer")
     df.index = [LABELS.get(k, k) for k in df.index]
     st.dataframe(df.style.format("{:.2f}"), width="stretch")
     if ref is not None:
         st.metric("SNR improvement", f"{df.loc['SNR (dB)', 'Change']:+.1f} dB")
-    st.markdown(f"**ASR (wav2vec2) on original:** {hyps['Original'] or '∅'}  \n**ASR on enhanced:** {hyps['Enhanced'] or '∅'}"
-                + (f"  \n**Reference transcript:** {text}" if text else ""))
+    if asr and m["hyps"]:
+        h = m["hyps"]
+        st.markdown(f"**ASR (wav2vec2) on original:** {h['Original'] or '∅'}  \n**ASR on enhanced:** {h['Enhanced'] or '∅'}"
+                    + (f"  \n**Reference transcript:** {text}" if text else ""))
     st.caption("PESQ-WB / STOI / SI-SDR / SNR need a clean reference. DNSMOS P.835 (SIG / BAK / OVRL) is non-intrusive. "
-               "WER uses wav2vec2-base-960h.")
+               "WER uses wav2vec2-base-960h." + (" PESQ is not installed on this server." if no_pesq else ""))
 
 
 def page_live():
@@ -263,9 +287,11 @@ def page_live():
         devs = sd.query_devices()
         ins = {i: d["name"] for i, d in enumerate(devs) if d["max_input_channels"] > 0}
         outs = {i: d["name"] for i, d in enumerate(devs) if d["max_output_channels"] > 0}
-    except Exception as e:  # no PortAudio / no devices
-        st.error(f"No audio device available: {e}")
+    except Exception:  # no PortAudio / no devices
         ins, outs = {}, {}
+    if not ins:
+        st.info("This machine has no microphone (normal on a hosted server), so the real-time loop is not "
+                "available here. Run the app on your own computer for Mode 1, or use Mode 2 below.")
     models = [m for m in model_options() if m not in CLASSICAL]
     if ins and models:
         c = st.columns(4)
@@ -361,7 +387,7 @@ def page_analysis():
     else:
         st.subheader(f"Last input: {label(last['system'])}")
         degradation_panel(last["analysis"])
-        show_metrics(last["x"], last["y"], last["ref"], last["text"])
+        show_metrics(last, where="analysis")
     st.subheader("Test-set results (measured, see docs/experiments.md)")
     tdir = "results/tables"
     if os.path.isdir(tdir):

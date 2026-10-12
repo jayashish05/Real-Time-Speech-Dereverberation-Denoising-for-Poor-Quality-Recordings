@@ -1,0 +1,21 @@
+# Deployment requirements (Streamlit Community Cloud: Linux, CPU only). Streamlit uses this file because it sits
+# next to the entrypoint; it takes precedence over ../requirements.txt and ../environment.yml (local/dev setup).
+# Differences from the dev file: CPU-only PyTorch wheels (196 MB instead of the multi-GB CUDA build), and no
+# pesq (source-only on Linux, needs a compiler; the app shows PESQ as unavailable when it is missing).
+torch @ https://download.pytorch.org/whl/cpu/torch-2.14.1%2Bcpu-cp311-cp311-manylinux_2_28_x86_64.whl ; python_version == "3.11"
+torch @ https://download.pytorch.org/whl/cpu/torch-2.14.1%2Bcpu-cp312-cp312-manylinux_2_28_x86_64.whl ; python_version == "3.12"
+torch @ https://download.pytorch.org/whl/cpu/torch-2.14.1%2Bcpu-cp313-cp313-manylinux_2_28_x86_64.whl ; python_version == "3.13"
+numpy==2.5.3
+scipy==1.18.1
+soundfile==0.14.0
+pandas==3.0.6
+PyYAML==6.0.3
+matplotlib==3.11.2
+pystoi==0.4.1
+jiwer==4.0.0
+onnxruntime==1.30.0
+transformers==5.18.0
+huggingface_hub==1.33.0
+nara-wpe==0.0.11
+streamlit==1.65.0
+sounddevice==0.5.6

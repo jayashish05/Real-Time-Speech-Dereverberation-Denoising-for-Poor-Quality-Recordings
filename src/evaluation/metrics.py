@@ -26,10 +26,10 @@ def snr(ref, est, eps=1e-10):
 
 
 def pesq_wb(ref, est):
-    from pesq import pesq
     try:
+        from pesq import pesq
         return float(pesq(SR, ref, est, "wb"))
-    except Exception:  # e.g. no utterance detected
+    except Exception:  # pesq not installed (hosted build), or no utterance detected
         return float("nan")
 
 
@@ -53,7 +53,8 @@ def intrusive(ref, est, noisy=None):
 def _dnsmos_session():
     import onnxruntime as ort
     so = ort.SessionOptions()
-    so.intra_op_num_threads = so.inter_op_num_threads = 1  # avoid oversubscription in worker pools
+    # 1 thread by default (evaluation runs a worker pool); the app raises it via DNSMOS_THREADS
+    so.intra_op_num_threads = so.inter_op_num_threads = int(os.environ.get("DNSMOS_THREADS", "1"))
     so.log_severity_level = 3
     # CoreML (Apple GPU/ANE) runs the model in ~10 ms vs ~0.4-6 s on CPU; outputs agree to 1e-4
     prov = [p for p in ("CoreMLExecutionProvider", "CPUExecutionProvider") if p in ort.get_available_providers()]
